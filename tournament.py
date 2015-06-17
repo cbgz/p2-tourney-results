@@ -11,7 +11,7 @@
 # consistency although it is not in strict compliance with PEP8
 
 import psycopg2
-BYE = (9999,"BYE")
+BYE = (-1,"BYE")
 
 
 def pairHasPlayed(played, pair):
@@ -27,34 +27,53 @@ def connect(db_name="tournament"):
     try:
         db = psycopg2.connect("dbname={}".format(db_name))
         return  db, db.cursor()
-    except:
+    except :
         print("Could not connect to database: tournament")
+
+
+def dbquery(query, params=None):
+    '''Query the PostgreSQL database. 
     
+    Returns: 
+        Result set if available/appropriate to the query.
+    '''
+    results = None
+    conn, cur = connect()
+    if params: # check if we should call a parameterized query or not
+        try:
+            cur.execute( query, params )
+        except psycopg2.ProgrammingError as err:
+            print err.pgerror
+    else:
+        try:
+            cur.execute( query )
+        except psycopg2.ProgrammingError as err:
+            print err.pgerror
+    
+    try: # check if results available
+        results = cur.fetchall()
+    except psycopg2.ProgrammingError:
+        pass
+
+    conn.commit()
+    conn.close()
+    if results: return results
+
 
 def deleteMatches():
     '''Remove all the match records from the database.'''
-    conn, cur = connect()
-    cur.execute("DELETE FROM match;")
-    conn.commit()
-    conn.close()
+    dbquery("DELETE FROM match;")
 
 
 def deletePlayers():
     '''Remove all the player records from the database.'''
-    conn, cur = connect()
-    cur.execute("DELETE FROM player;")
-    conn.commit()
-    conn.close()
+    dbquery("DELETE FROM player;")
 
 
 def countPlayers():
     '''Returns the number of players currently registered.'''
-    conn, cur = connect()
-    cur.execute( "SELECT COUNT(name) FROM player;")
-    result = cur.fetchone()
-    conn.close()
-    # return int(result[0])
-    return result[0]
+    result = dbquery("SELECT COUNT(name) FROM player;")
+    return result[0][0]
 
 
 def registerPlayer(name):
@@ -65,11 +84,7 @@ def registerPlayer(name):
     Args:
       name: the player's full name (need not be unique).
     '''
-    conn, cur = connect()
-    # add new player to player table
-    cur.execute("INSERT INTO player (name) VALUES(%s);", (name, ))
-    conn.commit()
-    conn.close()
+    dbquery("INSERT INTO player (name) VALUES(%s);", (name, ))
 
 
 def playerStandings(option='default'):
@@ -93,30 +108,20 @@ def playerStandings(option='default'):
         wins: the number of matches the player has won
         matches: the number of matches the player has played
     '''
-    # connect to db
-    conn, cur = connect()
-    
     # define queries
-    queries = dict()
-    queries['default'] = ("SELECT player.id, player.name, "
-                        "standings.wins, standings.matches "
-                        "FROM player, standings WHERE player.id=standings.id "
-                        "ORDER BY standings.wins DESC;")
-    queries['full'] = ("SELECT player.id, player.name, "
-                        "standings.wins, standings.losses, standings.draws, "
-                        "standings.bye, standings.matches "
-                        "FROM player, standings WHERE player.id=standings.id "
-                        "ORDER BY standings.wins DESC, standings.losses;")
-    queries['seeding'] = ("SELECT player.id, player.name "
-                        "FROM player, seedings WHERE player.id=seedings.id "
-                        "ORDER BY seedings.score DESC;")
-    queries['nobyes'] = ("SElECT player.id, player.name "
-                        "FROM player JOIN seedings ON player.id=seedings.id "
-                        "WHERE player.bye=0 ORDER BY seedings.score DESC;")
+    query = dict()
+    query['default'] = "SELECT p.id, p.name, s.wins, s.matches \
+                        FROM player p, standings s WHERE p.id=s.id \
+                        ORDER BY s.wins DESC, s.bye DESC, s.draws DESC;"
+    query['full'] = "SELECT p.id, p.name, s.wins, s.draws, s.losses, s.bye, \
+                    s.matches FROM standings s, player p WHERE s.id=p.id \
+                    ORDER BY s.wins DESC, s.bye DESC, s.draws DESC;"
+    query['seeding'] = "SELECT s.id, p.name FROM seedings s, player p \
+                        WHERE s.id=p.id ORDER BY s.score;"
+    query['nobyes'] = "SElECT p.id, p.name FROM standings s JOIN player p \
+                        ON s.id=p.id WHERE p.bye=0 ORDER BY s.wins DESC;"
 
-    cur.execute(queries[option])
-    standings = cur.fetchall()
-    conn.close()
+    standings = dbquery(query[option])
     return standings
 
 
@@ -129,24 +134,17 @@ def reportMatch(winner, loser=BYE[0], draw=0):
          if not provided, the match is a BYE
       draw: (optional) 1 (or other truthy value) to indicate a draw or tie
     '''
-    # connect to db
-    conn, cur = connect()
-    
-    if draw:
-        # add match to match table with no winner
-        cur.execute("INSERT INTO match (wid, lid, draw) VALUES(%s, %s, TRUE);",
-                (winner, loser))
-    elif loser < BYE[0]:
-        # add match to match table if the loser isn't the BYE id
-        cur.execute("INSERT INTO match (wid, lid, draw) VALUES(%s, %s, FALSE);",
-                    (winner, loser))
-    else:
-        # for byes, update the bye flag on the player record
-        cur.execute("UPDATE player SET bye = 1 WHERE id = %s;", (winner,))
+    if draw:  # add match to match table with no winner
+        query = "INSERT INTO match (wid, lid, draw) VALUES(%s, %s, TRUE);"
+        params = (winner, loser)
+    elif loser > BYE[0]:  # add match to table if the loser isn't the BYE id
+        query = "INSERT INTO match (wid, lid, draw) VALUES(%s, %s, FALSE);"
+        params = (winner, loser)
+    else:  # for byes, update the bye flag on the player record
+        query = "UPDATE player SET bye = 1 WHERE id = %s;"
+        params = (winner, )
 
-    # clean up connection
-    conn.commit()
-    conn.close()
+    dbquery(query, params)
  
  
 def swissPairings():
@@ -168,8 +166,6 @@ def swissPairings():
         id2: the second player's unique id
         name2: the second player's name
     '''
-    # connect to db
-    conn, cur = connect()
     round = []
     hasBye = False
    
@@ -181,9 +177,11 @@ def swissPairings():
         hasBye = potentialByes[-1]
         round.append(hasBye + BYE)
 
-    # get played matches for in-memory check to prevent repeat matches
-    cur.execute("SELECT wid, lid FROM match;")
-    played = [sorted(pair) for pair in cur.fetchall()]
+    # get played matches
+    played = dbquery("SELECT wid, lid FROM match;")
+    if played is None: played = []
+    # sort pairings & cast to strings for fast in-memory repeat match checking
+    played = [sorted(pair) for pair in played]
     played = [str(pair) for pair in played]
 
     # init lists
@@ -215,6 +213,4 @@ def swissPairings():
         newMatch = []
         bullpen = []
 
-    # clean up connection	
-    conn.close()
     return round

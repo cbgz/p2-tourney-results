@@ -11,6 +11,10 @@ CREATE TABLE player (
     name	text,					-- player full name
 	bye		integer	DEFAULT 0		-- has player had bye (1): int instead of bool for simpler view math
 );
+-- Because this is a single tournament system (per base project spec), and when implementing byes, a player
+-- may only have one buy, the condition of having had a bye is an attribute of the player. Byes could be
+-- implemented in a separate table, but it would be a waste of tablespace within the scope of this spec.
+
 
 -- match table: winner id (wid) and loser id (lid) constrained to registered players as foreign keys
 CREATE TABLE match(
@@ -33,7 +37,7 @@ CREATE VIEW standings AS
 	FROM player LEFT JOIN match 
 	ON (player.id = match.wid OR player.id = match.lid)
 	GROUP BY player.id 
-	ORDER BY wins DESC;
+	ORDER BY wins DESC, draws, losses;
 	
 -- Separate seedings view to clarify ranking math; used hard-coded values but could have been
 -- referenced instead from an additional table for configurability from program code. (out of scope)

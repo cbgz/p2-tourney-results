@@ -3,8 +3,8 @@
            Project 2 for Udacity Full Stack Web Dev NanoDegree
 
 
-What is it?
------------
+What is this?
+-------------
 
 This package contains a python module for managing players and results in a
 Swiss style tournament. A database is configured and module functions handle
@@ -56,7 +56,8 @@ The following files are included in this package:
 Notes for the Reviewer
 ----------------------
 
-In addition to the base requirements, the following features are implemented:
+In addition to the base requirements, the following extra credit features as
+noted in the project description are implemented:
     - Prevent rematches
     - Support byes for an odd number of players; only one bye per player
     - Support draws

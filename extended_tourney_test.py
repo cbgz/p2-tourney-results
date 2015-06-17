@@ -39,7 +39,7 @@ def registerManyPlayers():
 def pickwinners(pairs):
     '''Pick winners of matches with some random draws and reportMatch.'''
     for pair in pairs:
-        if pair[2] < 9999:
+        if pair[2] > -1:
             pair = sorted([pair[:2], pair[2:]],key=lambda player:player[1])
             pair = [x[0] for x in pair]
             draw = random.choice( [0,0,0,0,0,1])
@@ -49,7 +49,7 @@ def pickwinners(pairs):
 
 
 if __name__ == '__main__':
-    header = ["ID", "Name------", "Wins", "Losses", "Draws", "Byes", "Matches"]
+    header = ["ID", "Name------", "Wins", "Draws", "Losses", "Byes", "Plyd Mtchs"]
     deleteMatches()
     deletePlayers()
     registerManyPlayers()
